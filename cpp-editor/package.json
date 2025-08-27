@@ -1,0 +1,11 @@
+{
+  "name": "cpp-ws-runner",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "express": "^4.19.2",
+    "node-pty": "^1.0.0",
+    "tmp": "^0.2.3",
+    "ws": "^8.17.1"
+  }
+}
