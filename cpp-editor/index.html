@@ -1,78 +1,503 @@
-// Minimal WS runner: g++ compile then run with a PTY, stream I/O
-// npm i ws express node-pty tmp
-const express = require('express');
-const { WebSocketServer } = require('ws');
-const pty = require('node-pty');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
-const { spawn } = require('child_process');
-const tmp = require('tmp');
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>C++ Playground | Online Compiler</title>
+  <link rel="icon" type="image/x-icon" href="https://img.icons8.com/?size=256&id=40669&format=png">
+  <style>
+    :root {
+      --editor-bg-primary: #ffffff;
+      --editor-bg-secondary: #f0f0f0;
+      --editor-text-primary: #000000;
+      --editor-border-color: #cccccc;
+      --term-bg: #0d1117;
+      --term-fg: #e6edf3;
+      --term-border: #2d333b;
+      --btn-bg: #e0e0e0;
+      --btn-bg-hover: #d0d0d0;
+    }
+    .dark-mode {
+      --editor-bg-primary: #272822;
+      --editor-bg-secondary: #3a3d4b;
+      --editor-text-primary: #f8f8f2;
+      --editor-border-color: #6272a4;
+      --term-bg: #0d1117;
+      --term-fg: #e6edf3;
+      --term-border: #30363d;
+    }
+    html, body { height:100%; margin:0; overflow:hidden; font-family:Arial,sans-serif; }
+    .container { display:grid; grid-template-columns:1fr 5px 1fr; height:100vh; min-height:0; }
+    .editor-wrapper { display:flex; flex-direction:column; overflow:hidden; background:var(--editor-bg-primary); min-height:0; }
+    #editor { flex-grow:1; width:100%; background:var(--editor-bg-primary); color:var(--editor-text-primary); min-height:0; }
+    .resizer { background:#ccc; cursor:col-resize; display:flex; align-items:center; justify-content:center; }
+    .resizer::after { content:'⋮'; color:#666; font-size:20px; }
+    #rightPanel { display:grid; grid-template-rows: 1fr auto; height:100%; min-height:0; }
+    #output {
+      overflow:auto; background:var(--term-bg); color:var(--term-fg);
+      border-left:1px solid var(--term-border); padding:10px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      white-space:pre-wrap; line-height:1.5; min-height:0;
+    }
+    .term-section { margin-bottom:12px; }
+    .term-label { color:#9da7b1; font-weight:bold; margin-bottom:6px; }
+    .term-pre { margin:0; white-space:pre-wrap; }
+    .buttons {
+      padding:10px; background:var(--editor-bg-secondary);
+      display:flex; justify-content:space-between; align-items:center;
+      border-bottom:1px solid var(--editor-border-color);
+    }
+    .buttons button {
+      margin:0 5px; cursor:pointer; background:var(--btn-bg);
+      border:1px solid var(--editor-border-color); padding:5px 10px; border-radius:3px; transition:background .2s;
+    }
+    .buttons button:hover { background:var(--btn-bg-hover); }
+    .row { display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap; }
+    select, input[type="text"] { background:#eaeaea; border:1px solid var(--editor-border-color); border-radius:3px; padding:4px 6px; }
+    .pill { font-size:12px; padding:2px 6px; border-radius:999px; background:#eef; border:1px solid #99b; }
+    .term-input-bar {
+      display:grid; grid-template-columns:auto 1fr auto; gap:8px; align-items:center;
+      background:#0f1720; border-top:1px solid var(--term-border); padding:8px 10px; min-height:0;
+    }
+    .term-input-bar .prompt { color:#8ab4ff; font-weight:bold; }
+    #termInput {
+      background:#0b1220; color:#e6edf3; border:1px solid #223048; border-radius:6px; padding:6px 8px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    }
+    #sendLine {
+      background:#263445; color:#e6edf3; border:1px solid #223048; border-radius:6px; padding:6px 10px; cursor:pointer;
+    }
+    #sendLine:hover { background:#2e3b50; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="editor-wrapper" id="editorWrapper">
+      <div class="buttons">
+        <div class="row">
+          <button id="runBtn">▶ Run</button>
+          <button id="stopBtn">■ Stop</button>
+          <button id="shareBtn" title="Permalink (Wandbox)">Share</button>
+          <span id="backendBadge" class="pill">backend: auto</span>
+        </div>
+        <div class="row">
+          <label for="compilerSel">Compiler</label>
+          <select id="compilerSel"><option>Loading…</option></select>
+          <label for="std">Std</label>
+          <select id="std">
+            <option value="-std=c++23">C++23</option>
+            <option value="-std=c++20">C++20</option>
+            <option value="-std=c++17" selected>C++17</option>
+            <option value="-std=c++14">C++14</option>
+            <option value="-std=c++11">C++11</option>
+          </select>
+          <label for="opt">Opt</label>
+          <select id="opt">
+            <option value="">O0</option>
+            <option value="-O2" selected>O2</option>
+            <option value="-O3">O3</option>
+          </select>
+          <label for="stdin">Initial stdin</label>
+          <input id="stdin" placeholder="(optional, batch mode only)" style="width:240px;" />
+        </div>
+      </div>
+      <div id="editor">#include &lt;iostream&gt;
+#include &lt;string&gt;
+using namespace std;
 
-const app = express();
-const server = app.listen(process.env.PORT || 8080, () => {
-  console.log('listening on', server.address().port);
-});
-const wss = new WebSocketServer({ server, path: '/run' });
+int main() {
+  cout &lt;&lt; "Enter your name: " &lt;&lt; flush;
+  string name;
+  if (cin &gt;&gt; name) {
+    cout &lt;&lt; "Hi " &lt;&lt; name &lt;&lt; "!" &lt;&lt; endl;
+  } else {
+    cout &lt;&lt; "No input received." &lt;&lt; endl;
+  }
+  return 0;
+}</div>
+    </div>
 
-function safeFlag(s) { return (s||'').replace(/[^\w+\-=.]/g, ''); }
+    <div class="resizer"></div>
 
-wss.on('connection', (ws) => {
-  let workDir = null;
-  let childPty = null;
+    <div id="rightPanel">
+      <div id="output">Ready.</div>
+      <div class="term-input-bar">
+        <span class="prompt">&gt;</span>
+        <input id="termInput" placeholder="type here while the program runs; press Enter to send to stdin" />
+        <button id="sendLine">Send</button>
+      </div>
+    </div>
+  </div>
 
-  function send(obj) { try { ws.send(JSON.stringify(obj)); } catch {} }
+  <!-- Ace -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.36.2/ace.min.js" crossorigin="anonymous"></script>
+  <!-- ANSI → HTML -->
+  <script src="https://cdn.jsdelivr.net/npm/ansi_up@5.2.1/ansi_up.js" crossorigin="anonymous"></script>
 
-  ws.on('message', async (buf) => {
-    let msg; try { msg = JSON.parse(buf.toString()); } catch { return; }
+  <script>
+    // ===================== CONFIG =====================
+    // If you deploy the backend below, put its ws URL here (wss://yourdomain/run)
+    const INTERACTIVE_URL = ""; // e.g., "wss://your-domain.example/run"
+    // ==================================================
 
-    if (msg.type === 'start') {
-      // prepare temp dir
-      workDir = tmp.dirSync({ unsafeCleanup: true }).name;
-      const src = path.join(workDir, 'main.cpp');
-      fs.writeFileSync(src, msg.code || '', 'utf8');
+    // Dev logs -> browser console only
+    const dlog = (...a)=>{ try{ console.log('[CPP/WEB]', ...a);}catch{} };
+    const dwarn = (...a)=>{ try{ console.warn('[CPP/WEB]', ...a);}catch{} };
+    const derr = (...a)=>{ try{ console.error('[CPP/WEB]', ...a);}catch{} };
+    window.addEventListener('error', e => derr('[JS error]', e.message));
+    window.addEventListener('unhandledrejection', e => derr('[Promise rejection]', e.reason));
 
-      // compile
-      const flags = (msg.flags || '').split(/\s+/).filter(Boolean).map(safeFlag);
-      const opt   = safeFlag(msg.opt || '');
-      const args = ['-x','c++','-std=c++17','-O2', ...flags, src, '-o', 'a.out'];
-      if (opt) args.splice(3, 1, opt); // replace -O2 with chosen opt if provided
+    // ACE
+    const editor = ace.edit("editor", {
+      mode:"ace/mode/c_cpp", theme:"ace/theme/textmate",
+      showPrintMargin:false, wrap:true, showLineNumbers:true,
+      tabSize:2, useSoftTabs:true, fontSize:14, highlightActiveLine:true
+    });
 
-      const gpp = spawn('g++', args, { cwd: workDir });
-      let co = '', ce = '';
-      gpp.stdout.on('data', d => { co += d.toString(); });
-      gpp.stderr.on('data', d => { ce += d.toString(); });
-      gpp.on('close', (code) => {
-        send({ type: 'compile', ok: code === 0, code, stdout: co, stderr: ce });
-        if (code !== 0) return;
+    // DOM
+    const container = document.querySelector('.container');
+    const resizer = document.querySelector('.resizer');
+    const output = document.getElementById('output');
+    const runBtn = document.getElementById('runBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const shareBtn = document.getElementById('shareBtn');
+    const compilerSel = document.getElementById('compilerSel');
+    const stdSel = document.getElementById('std');
+    const optSel = document.getElementById('opt');
+    const stdinEl = document.getElementById('stdin');
+    const backendBadge = document.getElementById('backendBadge');
+    const termInput = document.getElementById('termInput');
+    const sendLineBtn = document.getElementById('sendLine');
 
-        // run inside a PTY to get line-buffering and real stdin
-        childPty = pty.spawn(path.join(workDir, 'a.out'), [], {
-          name: 'xterm-color',
-          cols: 120, rows: 30,
-          cwd: workDir,
-          env: process.env
+    // Resizer
+    let isDrag=false;
+    resizer.addEventListener("pointerdown",()=>{isDrag=true;document.body.style.cursor='col-resize';});
+    document.addEventListener("pointermove",e=>{
+      if(!isDrag) return;
+      const rect=container.getBoundingClientRect();
+      const w=rect.width; const x=e.clientX-rect.left;
+      const left=Math.max(180,Math.min(x,w-180-5));
+      container.style.gridTemplateColumns=`${left}px 5px ${w-left-5}px`;
+      editor.resize();
+    });
+    document.addEventListener("pointerup",()=>{isDrag=false;document.body.style.cursor='';});
+
+    // ANSI
+    let ansiInstance = null;
+    (function ensureAnsi(){
+      try { ansiInstance = new AnsiUp(); } catch(e) { dwarn('No ANSI lib, stripping color.'); }
+    })();
+    function ansiHTML(s){
+      if(!s) return '';
+      if(ansiInstance){ return ansiInstance.ansi_to_html(String(s)).replace(/\r\n?/g,'\n'); }
+      return String(s).replace(/\x1B\[[0-9;]*[A-Za-z]/g, '').replace(/\r\n?/g,'\n');
+    }
+
+    // Fetch helpers
+    let inFlightAbort = null;
+    function abortInFlight(){ if(inFlightAbort){ try{ inFlightAbort.abort(); }catch{} } inFlightAbort=null; }
+    async function fetchWithTimeout(url,opts={},ms=25000){
+      const ctrl=new AbortController(); const t=setTimeout(()=>ctrl.abort('timeout'),ms);
+      try{ return await fetch(url,{...opts,signal:ctrl.signal}); } finally{ clearTimeout(t); }
+    }
+    async function tryJson(urls, opts, ms=25000){
+      let lastErr;
+      for(const u of urls){
+        try{
+          const r=await fetchWithTimeout(u,opts,ms);
+          if(!r.ok) throw new Error(`HTTP ${r.status}`);
+          return await r.json();
+        }catch(e){ lastErr=e; dwarn('probe failed', u, e); }
+      }
+      throw lastErr || new Error('All endpoints failed');
+    }
+
+    // Backends (batch mode)
+    const BACKENDS = {
+      wandbox: {
+        list: ['https://wandbox.org/api/list.json','https://melpon.org/wandbox/api/list.json'],
+        compile: ['https://wandbox.org/api/compile.json','https://melpon.org/wandbox/api/compile.json'],
+      },
+      piston: {
+        runtimes: 'https://emkc.org/api/v2/piston/runtimes',
+        execute:  'https://emkc.org/api/v2/piston/execute'
+      }
+    };
+
+    function buildCompilerFlags(){
+      const stdVal=(stdSel.value||'').replace(/^-std=/,'').trim();
+      const optFlag=(optSel.value||'').trim();
+      const flags=[]; if(stdVal) flags.push(`-std=${stdVal}`); if(optFlag) flags.push(optFlag);
+      return flags.join('\n');
+    }
+
+    function renderSections(sections) {
+      const html = sections
+        .filter(s => s && s.text && String(s.text).trim() !== '')
+        .map(s => `
+          <div class="term-section">
+            <div class="term-label">${s.label}</div>
+            <div class="term-pre">${ansiHTML(s.text)}</div>
+          </div>
+        `).join('');
+      output.innerHTML = html || '<div class="term-pre">No output.</div>';
+      output.scrollTop = output.scrollHeight;
+    }
+    function renderWandboxResp(resp){
+      renderSections([
+        {label:'Compiler Output', text: resp.compiler_output || resp.compiler_message},
+        {label:'Compiler Errors', text: resp.compiler_error},
+        {label:'Program Output',  text: resp.program_output},
+        {label:'Program Errors',  text: resp.program_error},
+        {label:'Status',          text: (resp.status!=null? String(resp.status):'')},
+        {label:'Permalink',       text: resp.url || ''},
+      ]);
+      return resp && resp.url;
+    }
+    function renderPistonResp(resp){
+      const merged = {
+        compiler_output: resp?.compile?.stdout,
+        compiler_error:  resp?.compile?.stderr,
+        program_output:  resp?.run?.stdout,
+        program_error:   resp?.run?.stderr
+      };
+      renderSections([
+        {label:'Compiler Output', text: merged.compiler_output},
+        {label:'Compiler Errors', text: merged.compiler_error},
+        {label:'Program Output',  text: merged.program_output},
+        {label:'Program Errors',  text: merged.program_error},
+      ]);
+    }
+
+    let compilerListReady = false;
+    async function loadCompilers(){
+      compilerSel.innerHTML = '<option>Loading…</option>';
+      try{
+        const list = await tryJson(BACKENDS.wandbox.list,{mode:'cors'},15000);
+        const cpp = list.filter(x => (x.language||'').toLowerCase().includes('c++'));
+        cpp.sort((a,b)=>a.name.localeCompare(b.name));
+        compilerSel.innerHTML='';
+        for(const c of cpp){
+          const opt=document.createElement('option');
+          opt.value=c.name; opt.textContent=c.version ? `${c.name} (${c.version})` : c.name;
+          compilerSel.appendChild(opt);
+        }
+        const pref=['gcc-14','clang-18','clang-17','gcc-13','clang-16'];
+        const values=[...compilerSel.options].map(o=>o.value);
+        compilerSel.value = values.find(v=> pref.some(p=>v.startsWith(p))) || values[0];
+        compilerListReady = true;
+      }catch(e){
+        dwarn('list failed; using fallback', e);
+        compilerSel.innerHTML='';
+        ['gcc-14.2.0','clang-17.0.0','gcc-13.2.0','clang-16.0.6','gcc-head','clang-head'].forEach(n=>{
+          const o=document.createElement('option'); o.value=n; o.textContent=n+' (fallback)'; compilerSel.appendChild(o);
         });
-        send({ type: 'ready' });
-        childPty.onData(data => send({ type:'stdout', data }));
-        childPty.onExit(({ exitCode }) => {
-          send({ type:'exit', code: exitCode });
-          try { fs.rmSync(workDir, { recursive: true, force: true }); } catch {}
+        compilerListReady = true;
+      }
+    }
+    setTimeout(()=>{ if(!compilerListReady){ loadCompilers().catch(()=>{}); }}, 1);
+
+    // =============== INTERACTIVE (WebSocket) ===============
+    let ws = null;
+    let running = false;
+
+    function wsSend(obj){ if(ws && ws.readyState===1){ ws.send(JSON.stringify(obj)); } }
+    function setBadge(txt){ backendBadge.textContent = txt; }
+
+    function startInteractiveRun(){
+      if(!INTERACTIVE_URL){ return false; }
+      try {
+        ws?.close();
+      } catch {}
+      ws = new WebSocket(INTERACTIVE_URL);
+      setBadge('backend: WS (connecting)');
+      output.innerHTML = '<div class="term-pre">Connecting…</div>';
+
+      ws.addEventListener('open', ()=>{
+        setBadge('backend: WS (connected)');
+        running = true;
+        output.innerHTML = '<div class="term-pre">Compiling…</div>';
+        wsSend({
+          type: 'start',
+          code: editor.getValue(),
+          flags: buildCompilerFlags(),
+          opt: optSel.value || '',
         });
       });
 
-    } else if (msg.type === 'stdin') {
-      if (childPty) childPty.write(String(msg.data || ''));
+      ws.addEventListener('message', (ev)=>{
+        let msg; try { msg = JSON.parse(ev.data); } catch { return; }
+        if(msg.type === 'compile'){
+          // show compiler output immediately
+          renderSections([
+            {label:'Compiler Output', text: msg.stdout || ''},
+            {label:'Compiler Errors', text: msg.stderr || ''},
+            {label:'Status', text: msg.ok ? '0' : (msg.code!=null? String(msg.code):'')},
+          ]);
+          if(!msg.ok){ running=false; setBadge('backend: WS (compile error)'); }
+        } else if(msg.type === 'stdout'){
+          output.innerHTML += ansiHTML(msg.data || '');
+          output.scrollTop = output.scrollHeight;
+        } else if(msg.type === 'stderr'){
+          output.innerHTML += ansiHTML(msg.data || '');
+          output.scrollTop = output.scrollHeight;
+        } else if(msg.type === 'ready'){ // program started running
+          setBadge('backend: WS (running)');
+        } else if(msg.type === 'exit'){
+          running=false;
+          setBadge(`backend: WS (exit ${msg.code})`);
+          output.innerHTML += `\n\n(exit ${msg.code})`;
+          output.scrollTop = output.scrollHeight;
+        } else if(msg.type === 'error'){
+          running=false;
+          setBadge('backend: WS (error)');
+          output.innerHTML += `\n\n${ansiHTML(String(msg.error||'error'))}`;
+          output.scrollTop = output.scrollHeight;
+        }
+      });
 
-    } else if (msg.type === 'kill') {
-      try { childPty?.kill(); } catch {}
-      try { fs.rmSync(workDir, { recursive: true, force: true }); } catch {}
-      send({ type:'exit', code: 137 });
+      ws.addEventListener('close', ()=>{
+        if(running){ output.innerHTML += '\n\n[connection closed]'; output.scrollTop = output.scrollHeight; }
+        running=false;
+        setBadge('backend: WS (closed)');
+      });
+
+      ws.addEventListener('error', ()=>{
+        running=false;
+        setBadge('backend: WS (error)');
+      });
+
+      return true;
     }
-  });
 
-  ws.on('close', () => {
-    try { childPty?.kill(); } catch {}
-    try { fs.rmSync(workDir, { recursive: true, force: true }); } catch {}
-  });
-});
+    // Input line -> WS stdin
+    function sendInteractiveLine(line){
+      if(!line) return;
+      termInput.value = '';
+      if(ws && ws.readyState===1){
+        wsSend({ type:'stdin', data: line + "\n" });
+      }
+    }
+
+    // Stop
+    function stopInteractive(){
+      if(ws && ws.readyState===1){ wsSend({ type:'kill' }); }
+      try { ws?.close(); } catch {}
+      running=false;
+      setBadge('backend: WS (stopped)');
+    }
+
+    // =============== BATCH (Wandbox → Piston) ===============
+    function buildWandboxPayload(){
+      return {
+        code: editor.getValue(),
+        stdin: stdinEl.value || '',
+        compiler: compilerSel.value || 'gcc-14.2.0',
+        'compiler-option-raw': buildCompilerFlags(),
+        options: 'warning,cpp-pedantic-errors',
+        save: false
+      };
+    }
+    async function compileRunWandbox(){
+      const headers={'Content-Type':'application/json'};
+      inFlightAbort=new AbortController();
+      for(const url of BACKENDS.wandbox.compile){
+        try{
+          const r=await fetchWithTimeout(url,{method:'POST',mode:'cors',headers,body:JSON.stringify(buildWandboxPayload()),signal:inFlightAbort.signal},35000);
+          const txt=await r.text(); if(!r.ok) throw new Error(`HTTP ${r.status} — ${txt.slice(0,200)}`);
+          const resp=JSON.parse(txt);
+          setBadge('backend: Wandbox');
+          renderWandboxResp(resp);
+          return true;
+        }catch(e){ dwarn('Wandbox failed', e); }
+      }
+      return false;
+    }
+    async function getLatestPistonCpp(){
+      const runtimes = await tryJson(BACKENDS.piston.runtimes,{mode:'cors'},15000);
+      const cpp = (runtimes||[]).filter(r => r.language==='c++' || r.language==='cpp' || r.language==='cplusplus');
+      if(!cpp.length) throw new Error('No Piston C++ runtime found');
+      cpp.sort((a,b)=>(a.version||'').localeCompare(b.version||''));
+      return cpp[cpp.length-1];
+    }
+    function buildPistonPayload(runtime){
+      const stdVal=(stdSel.value||'').replace(/^-std=/,'').trim();
+      const optFlag=(optSel.value||'').trim();
+      const compile_options=[]; if(stdVal) compile_options.push(`-std=${stdVal}`); if(optFlag) compile_options.push(optFlag);
+      return {
+        language: runtime.language === 'cplusplus' ? 'c++' : (runtime.language || 'cpp'),
+        version: runtime.version,
+        files: [{ name:'main.cpp', content: editor.getValue() }],
+        stdin: stdinEl.value || '',
+        args: [], compile_timeout: 10000, run_timeout: 10000,
+        compile_memory_limit: -1, run_memory_limit: -1,
+        compile_options
+      };
+    }
+    async function compileRunPiston(){
+      const runtime = await getLatestPistonCpp();
+      const r = await fetchWithTimeout(BACKENDS.piston.execute,{
+        method:'POST', mode:'cors', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(buildPistonPayload(runtime))
+      }, 35000);
+      if(!r.ok) throw new Error(`Piston HTTP ${r.status}`);
+      const data = await r.json();
+      setBadge(`backend: Piston (${runtime.version})`);
+      renderPistonResp(data);
+    }
+
+    // =============== Wiring ===============
+    sendLineBtn.addEventListener('click', ()=> sendInteractiveLine(termInput.value));
+    termInput.addEventListener('keydown', e => { if(e.key==='Enter'){ e.preventDefault(); sendInteractiveLine(termInput.value); } });
+
+    runBtn.addEventListener('click', async ()=>{
+      output.innerHTML = '<div class="term-pre">Starting…</div>';
+      output.scrollTop = output.scrollHeight;
+
+      if (INTERACTIVE_URL) {
+        // Interactive mode
+        startInteractiveRun();
+        termInput.focus();
+      } else {
+        // Batch mode
+        setBadge('backend: auto (WB→Piston)');
+        const ok = await compileRunWandbox();
+        if(!ok){
+          try { await compileRunPiston(); }
+          catch(e){ output.innerHTML = `<div class="term-pre">All backends failed.\n${String(e)}</div>`; }
+        }
+      }
+    });
+
+    stopBtn.addEventListener('click', ()=>{
+      if (INTERACTIVE_URL) stopInteractive();
+      else { abortInFlight(); output.innerHTML = '<div class="term-pre">Aborted.</div>'; }
+      output.scrollTop = output.scrollHeight;
+    });
+
+    shareBtn.addEventListener('click', async ()=>{
+      if (INTERACTIVE_URL){
+        alert('Share permalink is only available in batch (Wandbox) mode.');
+        return;
+      }
+      // Batch: Wandbox save
+      const payload = { ...buildWandboxPayload(), save: true };
+      for(const url of BACKENDS.wandbox.compile){
+        try{
+          const r=await fetchWithTimeout(url,{method:'POST',mode:'cors',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)},35000);
+          const txt=await r.text(); if(!r.ok) throw new Error(`HTTP ${r.status} — ${txt.slice(0,200)}`);
+          const resp=JSON.parse(txt);
+          setBadge('backend: Wandbox');
+          renderWandboxResp(resp);
+          if(resp && resp.url){ try{ navigator.clipboard?.writeText(resp.url);}catch{} }
+          return;
+        }catch(e){/* try next */ }
+      }
+      output.innerHTML += `\n\nShare failed on Wandbox.`;
+      output.scrollTop = output.scrollHeight;
+    });
+
+    // Kickoff
+    (async function init(){ await loadCompilers(); })();
+  </script>
+</body>
+</html>
