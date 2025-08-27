@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>C++ → WASM — Compile & Run (Clang + LLD)</title>
+  <title>C++ → WASM — Compile & Run (Direct Load)</title>
   <style>
     :root{ --bg:#0b0e14; --panel:#111827; --panel2:#0f172a; --accent:#4f8cff; --muted:#9aa4b2; --txt:#e6edf3; --ok:#16a34a; --warn:#f59e0b; --err:#ef4444; --br:#1f2937; }
     *{box-sizing:border-box}
@@ -35,8 +35,7 @@
     <h1>C++ → WebAssembly: Compile & Run</h1>
     <div class="sp"></div>
     <label><input id="optO3" type="checkbox" checked /> -O3</label>
-    <label><input id="showTiming" type="checkbox" /> Show timing</label>
-    <button id="runBtn" class="btn">Compile & Run ▶</button>
+    <button id="runBtn" class="btn" disabled>Compile & Run ▶</button>
   </header>
 
   <main>
@@ -61,15 +60,16 @@
   </main>
 
   <footer>
-    Hosted on GitHub Pages is fine.
+    Make sure <code>shared.js</code>, <code>shared_web.js</code>, <code>clang.js/.wasm</code>, <code>lld.js/.wasm</code>, <code>memfs.js/.wasm</code>, and <code>sysroot.tar</code> are in the same folder as this file.
   </footer>
 
   <!-- Ace Editor -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.9/ace.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.9/ace.js" crossorigin="anonymous"></script>
+  <!-- wasm-clang helpers -->
+  <script src="./shared.js"></script>
+  <script src="./shared_web.js"></script>
 
-  <!-- Main logic -->
   <script>
-    // --- editor with your simple base program ---
     const editor = ace.edit("editor", {
       mode: "ace/mode/c_cpp",
       theme: "ace/theme/one_dark",
@@ -90,78 +90,43 @@ int main() {
     const stdinEl = document.getElementById('stdin');
     const artifactInfo = document.getElementById('artifactInfo');
     const toolchainInfo = document.getElementById('toolchainInfo');
-    const showTiming = document.getElementById('showTiming');
     const optO3 = document.getElementById('optO3');
 
     function clearConsole(){ consoleEl.textContent=''; }
     function log(msg, cls=''){ const d=document.createElement('div'); d.className='log '+cls; d.textContent=msg; consoleEl.appendChild(d); consoleEl.scrollTop=consoleEl.scrollHeight; }
-    function clog(...a){ console.log('[CPP/WASM]', ...a); }
 
-    // Use prebuilt worker from jsDelivr (CORS-friendly) and keep all assets on the same CDN.
-    const BASE = 'https://cdn.jsdelivr.net/gh/binji/wasm-clang';
-    let workerReady = false;
-
-    runBtn.disabled = true;
-    log('Loading toolchain…');
-
-    let worker, watchdog;
-    try {
-      worker = new Worker('./worker.js'); // cross-origin okay on jsDelivr
-      watchdog = setTimeout(() => {
-        if (!workerReady) {
-          log('Worker timed out. If this persists, the CDN might be blocked.', 'warn');
-        }
-      }, 12000); // generous first-load window
-    } catch (e) {
-      clog('Worker construction failed:', e);
-      log('Failed to start toolchain worker.', 'err');
-    }
-
-    if (worker) {
-      worker.onmessage = (e) => {
-        const {type} = e.data || {};
-        if (type === 'log') {
-          if (showTiming.checked) log(e.data.msg);
-        } else if (type === 'ready') {
-          clearTimeout(watchdog);
-          workerReady = true;
-          toolchainInfo.textContent = 'toolchain: ' + e.data.info;
-          runBtn.disabled = false;
-          if (showTiming.checked) log('Toolchain ready ✔','ok');
-        } else if (type === 'artifact') {
-          artifactInfo.textContent = `artifact: ${e.data.name} (${e.data.size} bytes)`;
-        } else if (type === 'output') {
-          if (e.data.stdout) log(e.data.stdout.replace(/\x1b\[[0-9;]*m/g,'')); // strip ANSI
-          if (e.data.stderr) log(e.data.stderr.replace(/\x1b\[[0-9;]*m/g,''), 'warn');
-        } else if (type === 'error') {
-          log(e.data.message, 'err');
-          runBtn.disabled = false;
-        } else if (type === 'done') {
-          if (showTiming.checked) log('total: ' + e.data.time, 'ok');
-          runBtn.disabled = false;
-        }
-      };
-
-      // Kick off worker load from the same CDN base
+    (async () => {
       try {
-        worker.postMessage({ type: 'load', base: BASE, showTiming: false });
+        const base = './';
+        await loadClang(base);
+        await loadLLD(base);
+        await untarSysroot(base + 'sysroot.tar');
+        toolchainInfo.textContent = 'toolchain: ready';
+        runBtn.disabled = false;
+        log('Toolchain ready ✔','ok');
       } catch (e) {
-        clog('postMessage(load) failed:', e);
-        log('Could not initialize toolchain.', 'err');
+        toolchainInfo.textContent = 'toolchain: failed';
+        log('Error loading toolchain: ' + (e.message||e), 'err');
       }
-    }
+    })();
 
-    // Compile & run
-    runBtn.addEventListener('click', () => {
+    runBtn.addEventListener('click', async () => {
       clearConsole();
       log('Compiling…');
       runBtn.disabled = true;
-      if (!workerReady) { log('Toolchain not ready.', 'err'); runBtn.disabled = false; return; }
-      worker.postMessage({
-        type: 'run',
-        src: editor.getValue(),
-        opts: { filename: 'main.cpp', optimize: !!optO3.checked, stdin: stdinEl.value }
-      });
+      try {
+        const src = editor.getValue();
+        const obj = await clangCompile(src, { filename: 'main.cpp', optimize: !!optO3.checked });
+        const wasm = await lldLink([obj], { output: 'a.wasm' });
+        const res = await runWasi(wasm.bytes, { stdin: stdinEl.value });
+        artifactInfo.textContent = `artifact: a.wasm (${wasm.bytes.byteLength} bytes)`;
+        if (res.stdout) log(res.stdout);
+        if (res.stderr) log(res.stderr, 'warn');
+      } catch (e) {
+        log('Error: ' + (e.message||e), 'err');
+      } finally {
+        runBtn.disabled = false;
+      }
     });
   </script>
 </body>
