@@ -136,7 +136,7 @@ int main() {
   <script>
     // ===================== CONFIG =====================
     // If you deploy the backend below, put its ws URL here (wss://yourdomain/run)
-    const INTERACTIVE_URL = (()=>{ try { const u = new URL(window.location.href); const proto = u.protocol === 'https:' ? 'wss:' : 'ws:'; return `${proto}//${u.host}/run`; } catch { return ""; } })(); // e.g., "wss://your-domain.example/run"
+     const proto = u.protocol === 'https:' ? 'wss:' : 'ws:'; return `${proto}//${u.host}/run`; } catch { return ""; } })(); // e.g., "wss://your-domain.example/run"
     // ==================================================
 
     // Dev logs -> browser console only
@@ -310,11 +310,8 @@ try {
     let running = false;
 
     function wsSend(obj){ if(ws && ws.readyState===1){ ws.send(JSON.stringify(obj)); } }
-    function setBadge(txt){ backendBadge.textContent = txt; }
-
-    function startInteractiveRun(){
-      if(!INTERACTIVE_URL){ return false; }
-      try {
+    
+          try {
         ws?.close();
       } catch {}
       ws = 
@@ -338,7 +335,7 @@ async function streamInitialStdinIfAny(){
   for(const line of lines){
     const payload = line + "\n";
     echoToTerminal(payload);
-    try { wsSend({ type:'stdin', data: payload }); } catch(e){}
+    try {  } catch(e){}
     await new Promise(r => setTimeout(r, 10));
   }
 }
@@ -409,13 +406,13 @@ new WebSocket(INTERACTIVE_URL);
       if(!line) return;
       termInput.value = '';
       if(ws && ws.readyState===1){
-        wsSend({ type:'stdin', data: line + "\n" });
+        
       }
     }
 
     // Stop
     function stopInteractive(){
-      if(ws && ws.readyState===1){ wsSend({ type:'kill' }); }
+      if(ws && ws.readyState===1){  }
       try { ws?.close(); } catch {}
       running=false;
       setBadge('backend: WS (stopped)');
@@ -534,5 +531,50 @@ new WebSocket(INTERACTIVE_URL);
     // Kickoff
     (async function init(){ await loadCompilers(); })();
   </script>
+
+<!-- twr-wasm runtime -->
+<script src="https://unpkg.com/twr-wasm/dist/twr-wasm.min.js"></script>
+<script>
+async function runCppInBrowser(code) {
+  const output = document.getElementById('output');
+  const stdinEl = document.getElementById('stdin');
+  const termInputEl = document.getElementById('termInput');
+
+  output.innerHTML = ""; // clear
+
+  const wasmBinary = await twr.compileCppToWasm(code);
+
+  let inputQueue = [];
+  function stdin() {
+    return inputQueue.length ? inputQueue.shift() + "\n" : null;
+  }
+  function stdout(text) {
+    output.innerHTML += text;
+    output.scrollTop = output.scrollHeight;
+  }
+  function stderr(text) {
+    output.innerHTML += "<span style='color:red'>" + text + "</span>";
+    output.scrollTop = output.scrollHeight;
+  }
+
+  if (stdinEl && stdinEl.value.trim()) {
+    inputQueue = stdinEl.value.split(/\r?\n/);
+  }
+
+  await twr.runWasm(wasmBinary, { stdin, stdout, stderr });
+
+  if (termInputEl) {
+    termInputEl.addEventListener("keydown", e => {
+      if (e.key === "Enter") {
+        const termInput = termInputEl.value;
+        inputQueue.push(termInput);
+        stdout(termInput + "\n");
+        termInputEl.value = "";
+      }
+    });
+  }
+}
+</script>
+
 </body>
 </html>
