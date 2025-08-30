@@ -136,7 +136,7 @@ int main() {
   <script>
     // ===================== CONFIG =====================
     // If you deploy the backend below, put its ws URL here (wss://yourdomain/run)
-    const INTERACTIVE_URL = ""; // e.g., "wss://your-domain.example/run"
+    const INTERACTIVE_URL = (()=>{ try { const u = new URL(window.location.href); const proto = u.protocol === 'https:' ? 'wss:' : 'ws:'; return `${proto}//${u.host}/run`; } catch { return ""; } })(); // e.g., "wss://your-domain.example/run"
     // ==================================================
 
     // Dev logs -> browser console only
@@ -280,6 +280,15 @@ int main() {
           const opt=document.createElement('option');
           opt.value=c.name; opt.textContent=c.version ? `${c.name} (${c.version})` : c.name;
           compilerSel.appendChild(opt);
+
+// Prefer clang-head by default
+try {
+  const values=[...compilerSel.options].map(o=>o.value);
+  const pref=['clang-head', 'gcc-head', 'clang-18', 'clang-17', 'gcc-14', 'gcc-13', 'clang-16'];
+  const picked = values.find(v=> pref.some(p=> v && v.startsWith(p)));
+  if(picked) compilerSel.value = picked;
+} catch(e){}
+
         }
         const pref=['gcc-14','clang-18','clang-17','gcc-13','clang-16'];
         const values=[...compilerSel.options].map(o=>o.value);
@@ -308,7 +317,32 @@ int main() {
       try {
         ws?.close();
       } catch {}
-      ws = new WebSocket(INTERACTIVE_URL);
+      ws = 
+// === Input/Output helpers ===
+function echoToTerminal(s){
+  try {
+    output.innerHTML += ansiHTML(s);
+    output.scrollTop = output.scrollHeight;
+  } catch (e) {
+    // fallback
+    const out = document.getElementById('output') || output;
+    out.textContent += s;
+    out.scrollTop = out.scrollHeight;
+  }
+}
+
+async function streamInitialStdinIfAny(){
+  const text = (stdinEl && stdinEl.value) ? stdinEl.value : "";
+  if(!text) return;
+  const lines = String(text).split(/\r?\n/);
+  for(const line of lines){
+    const payload = line + "\n";
+    echoToTerminal(payload);
+    try { wsSend({ type:'stdin', data: payload }); } catch(e){}
+    await new Promise(r => setTimeout(r, 10));
+  }
+}
+new WebSocket(INTERACTIVE_URL);
       setBadge('backend: WS (connecting)');
       output.innerHTML = '<div class="term-pre">Connecting…</div>';
 
@@ -340,7 +374,8 @@ int main() {
         } else if(msg.type === 'stderr'){
           output.innerHTML += ansiHTML(msg.data || '');
           output.scrollTop = output.scrollHeight;
-        } else if(msg.type === 'ready'){ // program started running
+        } else if(msg.type === 'ready'){  try { streamInitialStdinIfAny(); } catch(e) {}
+ // program started running
           setBadge('backend: WS (running)');
         } else if(msg.type === 'exit'){
           running=false;
