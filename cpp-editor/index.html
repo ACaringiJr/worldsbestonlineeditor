@@ -7,9 +7,9 @@
 
   <!-- Register a same-origin COOP/COEP Service Worker -->
   <script>
-    (function(){
+    (function () {
       if ('serviceWorker' in navigator) {
-        // Use ONE of these two lines:
+        // Use ONE of these:
         // 1) Shared SW at origin root (covers ALL projects on acaringijr.github.io):
         // navigator.serviceWorker.register('/coi-serviceworker.js');
         // 2) Per-project SW (file lives next to this index.html):
@@ -24,13 +24,10 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.36.2/mode-c_cpp.min.js" crossorigin="anonymous"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.36.2/theme-monokai.min.js" crossorigin="anonymous"></script>
 
-  <!-- xterm.js -->
-  <link rel="stylesheet" href="https://unpkg.com/@xterm/xterm/css/xterm.css" />
-  <script type="module">
-    import { Terminal } from "https://unpkg.com/@xterm/xterm@5.5.0?module";
-    import { FitAddon } from "https://unpkg.com/@xterm/addon-fit@0.10.0?module";
-    window.XTerm = { Terminal, FitAddon };
-  </script>
+  <!-- xterm.js (UMD globals) -->
+  <link rel="stylesheet" href="https://unpkg.com/xterm/css/xterm.css" />
+  <script src="https://unpkg.com/xterm/lib/xterm.js"></script>
+  <script src="https://unpkg.com/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
 
   <style>
     :root {
@@ -114,19 +111,20 @@ int main(){
         const dx = ev.clientX - startX;
         const newLeft = Math.min(cols - 100, Math.max(200, startLeft + dx));
         grid.style.gridTemplateColumns = `${newLeft}px 6px ${cols - newLeft - 6}px`;
-        termFit.fit();
+        fitAddon.fit();
       }
       const up=()=>{window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up)};
       window.addEventListener('pointermove',move); window.addEventListener('pointerup',up);
     });
 
-    // --- Terminal ---
-    const term = new XTerm.Terminal({ convertEol:true, cursorBlink:true });
-    const termFit = new XTerm.FitAddon();
-    term.loadAddon(termFit);
+    // --- Terminal (UMD globals) ---
+    // window.Terminal and window.FitAddon come from the <script> tags we included.
+    const term = new window.Terminal({ convertEol:true, cursorBlink:true });
+    const fitAddon = new window.FitAddon();
+    term.loadAddon(fitAddon);
     term.open(document.getElementById('terminal'));
-    termFit.fit();
-    window.addEventListener('resize', () => termFit.fit());
+    fitAddon.fit();
+    window.addEventListener('resize', () => fitAddon.fit());
     const log = s => term.writeln((s||'').toString().replace(/\n/g,"\r\n"));
 
     // --- Wasmer SDK (dynamically import) ---
