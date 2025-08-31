@@ -1,16 +1,12 @@
-// worker.mjs (load with new Worker('worker.mjs', { type: 'module' }))
-// Same-origin module worker that pulls Wasmer JS SDK over ESM and runs clang in-browser.
-// No websockets. Pauses on stdio only for WASM programs that read from stdin; we simulate
-// stdin by buffering lines posted from the main thread.
-
-import { init, Wasmer, Directory } from "https://unpkg.com/@wasmer/sdk@latest/dist/index.mjs";
+import { init, Wasmer, Directory } from "https://cdn.jsdelivr.net/npm/@wasmer/sdk@0.9.0/dist/index.mjs";
+import wasmerSDKModule from "https://wasmerio.github.io/wasmer-js/wasm-inline.mjs";
 
 let clangPkg = null;
 
 async function ensureInit() {
   if (!clangPkg) {
-    await init();
-    clangPkg = await Wasmer.fromRegistry("clang/clang"); // downloads once, then cached
+    await init({ module: wasmerSDKModule });
+    clangPkg = await Wasmer.fromRegistry("clang/clang");
   }
 }
 
@@ -25,11 +21,9 @@ self.onmessage = async (e) => {
       const { code, stdin = "" } = msg;
       await ensureInit();
 
-      // Set up a project fs
       const project = new Directory();
       await project.writeFile("main.cpp", code);
 
-      // Compile to wasm
       const compile = await clangPkg.entrypoint.run({
         args: ["/project/main.cpp", "-O2", "-std=gnu++17", "-o", "/project/a.wasm"],
         mount: { "/project": project },
@@ -41,7 +35,6 @@ self.onmessage = async (e) => {
         return;
       }
 
-      // Run the produced wasm (batch stdin)
       const programWasm = await project.readFile("a.wasm");
       const prog = await Wasmer.fromFile(programWasm);
       const run = await prog.entrypoint.run({
@@ -55,6 +48,6 @@ self.onmessage = async (e) => {
       return;
     }
   } catch (err) {
-    self.postMessage({ type: "error", data: String(err && err.message || err) });
+    self.postMessage({ type: "error", data: String((err && err.message) || err) });
   }
 };
