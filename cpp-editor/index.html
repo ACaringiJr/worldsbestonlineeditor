@@ -120,7 +120,7 @@ int main(){
     // --- Terminal (UMD globals) ---
     // window.Terminal and window.FitAddon come from the <script> tags we included.
     const term = new window.Terminal({ convertEol:true, cursorBlink:true });
-    const fitAddon = new window.FitAddon();
+    const fitAddon = new window.FitAddon.FitAddon();
     term.loadAddon(fitAddon);
     term.open(document.getElementById('terminal'));
     fitAddon.fit();
