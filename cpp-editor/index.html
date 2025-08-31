@@ -1,10 +1,4 @@
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>C++ Live — Wasmer (interactive if stdin empty) / Wandbox batch</title>
-  <style>
+<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>C++ Live — Wasmer (interactive if stdin empty) / Wandbox batch</title><style>
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif;margin:0;display:flex;flex-direction:column;height:100vh}
     header{padding:10px 14px;border-bottom:1px solid #e5e7eb;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
     header h1{font-size:16px;margin:0;font-weight:600}
@@ -14,25 +8,7 @@
     textarea{flex:1;border:0;outline:0;padding:12px;font:13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;resize:none}
     #term{flex:1;background:#0b1020;color:#d9e1ff;font:13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:12px;overflow:auto;white-space:pre-wrap}
     .muted{color:#6b7280}
-  </style>
-</head>
-<body>
-<header>
-  <h1>C++ Live — Wasmer (no websocket) / Wandbox</h1>
-  <span id="badge" class="muted">backend: auto</span>
-  <span id="status" class="muted"></span>
-</header>
-<main>
-  <section class="col">
-    <div class="bar">
-      <button id="run">Run</button>
-      <select id="mode">
-        <option value="auto" selected>Auto (Wasmer if stdin empty)</option>
-        <option value="wasmer">Wasmer (compile in browser)</option>
-        <option value="wandbox">Wandbox (batch)</option>
-      </select>
-    </div>
-<textarea id="code" spellcheck="false">// Standard C++ only
+  </style></head><body><header><h1>C++ Live — Wasmer (no websocket) / Wandbox</h1><span id="badge" class="muted">backend: auto</span><span id="status" class="muted"></span></header><main><section class="col"><div class="bar"><button id="run">Run</button><select id="mode"><option value="auto" selected>Auto (Wasmer if stdin empty)</option><option value="wasmer">Wasmer (compile in browser)</option><option value="wandbox">Wandbox (batch)</option></select></div><textarea id="code" spellcheck="false">// Standard C++ only
 #include <iostream>
 #include <string>
 int main(){
@@ -41,16 +17,7 @@ int main(){
   std::getline(std::cin, name);
   std::cout << "Hi " << name << "!\n";
   return 0;
-}</textarea>
-    <div class="bar"><label>Stdin (for batch):</label></div>
-    <textarea id="stdin" rows="6" spellcheck="false"></textarea>
-  </section>
-  <section class="col">
-    <div class="bar"><span class="muted">Terminal</span></div>
-    <div id="term"></div>
-  </section>
-</main>
-<script>
+}</textarea><div class="bar"><label>Stdin (for batch):</label></div><textarea id="stdin" rows="6" spellcheck="false"></textarea></section><section class="col"><div class="bar"><span class="muted">Terminal</span></div><div id="term"></div></section></main><script>
 const term = document.getElementById('term');
 const badge = document.getElementById('badge');
 const statusEl = document.getElementById('status');
@@ -127,6 +94,4 @@ document.getElementById('run').addEventListener('click', async () => {
     await runWandbox();
   }
 });
-</script>
-</body>
-</html>
+</script></body></html>
