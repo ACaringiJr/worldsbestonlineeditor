@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>C++ Live — Wasmer (inline, COOP/COEP SW) / Wandbox</title>
+  <title>C++ Live — Wasmer inline + COOP/COEP SW (diagnostic)</title>
   <style>
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif;margin:0;display:flex;flex-direction:column;height:100vh}
     header{padding:10px 14px;border-bottom:1px solid #e5e7eb;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
@@ -14,16 +14,18 @@
     textarea{flex:1;border:0;outline:0;padding:12px;font:13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;resize:none}
     #term{flex:1;background:#0b1020;color:#d9e1ff;font:13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:12px;overflow:auto;white-space:pre-wrap}
     .muted{color:#6b7280}
+    .warn{color:#f97316}
+    .err{color:#ef4444}
+    .ok{color:#22c55e}
   </style>
 </head>
 <body>
-<!-- Register COOP/COEP SW before anything else -->
+<!-- Register COOP/COEP SW BEFORE anything else -->
 <script>
 (async function (){
   if (!window.crossOriginIsolated && 'serviceWorker' in navigator) {
     try {
       await navigator.serviceWorker.register('./coi-serviceworker.js');
-      // First load will reload once to apply headers
       if (!sessionStorage.getItem('coi')) {
         sessionStorage.setItem('coi','1');
         location.reload();
@@ -80,10 +82,26 @@ function setStatus(t){ statusEl.textContent = t || ""; }
 let w = null;
 function ensureWorker(){
   if (w) return w;
-  w = new Worker('worker_inline_v3.mjs', { type: 'module' });
+  w = new Worker('worker_inline_v4.mjs', { type: 'module' });
   w.onmessage = (e) => {
     const msg = e.data || {};
-    if (msg.type === 'done'){
+    if (msg.type === 'status'){
+      const step = msg.step;
+      const map = {
+        'start': 'starting…',
+        'env-ok': 'env OK (cross-origin isolated)',
+        'init-start': 'init wasmer…',
+        'init-done': 'wasmer ready',
+        'fetch-clang': 'fetch clang package…',
+        'clang-ready': 'clang ready',
+        'fs-write': 'writing files…',
+        'compile': 'compiling…',
+        'compile-done': 'compile done',
+        'run': 'running…'
+      };
+      setStatus(map[step] || step);
+      twrite(`[${step}]` + "\\n");
+    } else if (msg.type === 'done'){
       setStatus("");
       tclear();
       if (msg.stdout) twrite(msg.stdout);
@@ -93,7 +111,7 @@ function ensureWorker(){
       tclear();
       twrite("❌ " + msg.data + "\\n");
       if (String(msg.data).includes('not cross-origin isolated')) {
-        twrite("\\nFix: this page must be cross-origin isolated. On GitHub Pages, keep coi-serviceworker.js next to this HTML.\\n");
+        twrite("\\nFix: This page must be cross-origin isolated. Keep coi-serviceworker.js next to this HTML, and load via HTTPS on GitHub Pages (not file://).\\n");
       }
     }
   };
@@ -102,7 +120,7 @@ function ensureWorker(){
 
 async function runWasmer(){
   setBadge("backend: Wasmer (clang in-browser)");
-  setStatus("Initializing… (first run downloads the clang package)");
+  setStatus("Initializing…");
   ensureWorker();
   const code = document.getElementById('code').value;
   const stdinText = document.getElementById('stdin').value || "";
