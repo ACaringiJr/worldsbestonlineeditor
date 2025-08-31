@@ -1,0 +1,132 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>C++ Live — Wasmer (interactive if stdin empty) / Wandbox batch</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif;margin:0;display:flex;flex-direction:column;height:100vh}
+    header{padding:10px 14px;border-bottom:1px solid #e5e7eb;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+    header h1{font-size:16px;margin:0;font-weight:600}
+    main{display:grid;grid-template-columns:1fr 1fr;height:calc(100vh - 54px)}
+    .col{display:flex;flex-direction:column;min-width:0}
+    .bar{padding:8px 10px;border-bottom:1px solid #eee;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    textarea{flex:1;border:0;outline:0;padding:12px;font:13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;resize:none}
+    #term{flex:1;background:#0b1020;color:#d9e1ff;font:13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:12px;overflow:auto;white-space:pre-wrap}
+    .muted{color:#6b7280}
+  </style>
+</head>
+<body>
+<header>
+  <h1>C++ Live — Wasmer (no websocket) / Wandbox</h1>
+  <span id="badge" class="muted">backend: auto</span>
+  <span id="status" class="muted"></span>
+</header>
+<main>
+  <section class="col">
+    <div class="bar">
+      <button id="run">Run</button>
+      <select id="mode">
+        <option value="auto" selected>Auto (Wasmer if stdin empty)</option>
+        <option value="wasmer">Wasmer (compile in browser)</option>
+        <option value="wandbox">Wandbox (batch)</option>
+      </select>
+    </div>
+<textarea id="code" spellcheck="false">// Standard C++ only
+#include <iostream>
+#include <string>
+int main(){
+  std::string name;
+  std::cout << "Enter your name: ";
+  std::getline(std::cin, name);
+  std::cout << "Hi " << name << "!\n";
+  return 0;
+}</textarea>
+    <div class="bar"><label>Stdin (for batch):</label></div>
+    <textarea id="stdin" rows="6" spellcheck="false"></textarea>
+  </section>
+  <section class="col">
+    <div class="bar"><span class="muted">Terminal</span></div>
+    <div id="term"></div>
+  </section>
+</main>
+<script>
+const term = document.getElementById('term');
+const badge = document.getElementById('badge');
+const statusEl = document.getElementById('status');
+function tclear(){ term.textContent = ""; }
+function twrite(s){ term.textContent += s; term.scrollTop = term.scrollHeight; }
+function setBadge(t){ badge.textContent = t; }
+function setStatus(t){ statusEl.textContent = t || ""; }
+
+let w = null;
+function ensureWorker(){
+  if (w) return w;
+  w = new Worker('worker.mjs', { type: 'module' });
+  w.onmessage = (e) => {
+    const msg = e.data || {};
+    if (msg.type === 'done'){
+      setStatus("");
+      tclear();
+      if (msg.stdout) twrite(msg.stdout);
+      if (msg.stderr) twrite(msg.stderr);
+    } else if (msg.type === 'error'){
+      setStatus("");
+      tclear();
+      twrite("❌ " + msg.data + "\\n");
+    }
+  };
+  return w;
+}
+
+async function runWasmer(){
+  setBadge("backend: Wasmer (clang in-browser)");
+  setStatus("Initializing… (first run downloads compiler package)");
+  ensureWorker();
+  const code = document.getElementById('code').value;
+  const stdinText = document.getElementById('stdin').value || "";
+  w.postMessage({ type: 'compile-run', code, stdin: stdinText });
+}
+
+const WB = ["https://wandbox.org/api/compile.json","https://melpon.org/wandbox/api/compile.json"];
+async function runWandbox(){
+  setBadge("backend: Wandbox (batch)");
+  setStatus("Posting to Wandbox…");
+  const payload = {
+    code: document.getElementById('code').value,
+    stdin: document.getElementById('stdin').value || "",
+    compiler: "clang-head",
+    save: false,
+    options: "warning,gnu++17,cpp-verbose"
+  };
+  for (const url of WB){
+    try{
+      const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+      const txt = await r.text();
+      if (!r.ok) throw new Error("HTTP " + r.status + " — " + txt.slice(0,200));
+      const resp = JSON.parse(txt);
+      setStatus("");
+      tclear();
+      if (resp.compiler_message) twrite(resp.compiler_message);
+      if (resp.program_output) twrite(resp.program_output);
+      if (resp.program_error) twrite(resp.program_error);
+      return;
+    }catch(e){ /* try next */ }
+  }
+  setStatus("");
+  tclear();
+  twrite("❌ All Wandbox endpoints failed.\\n");
+}
+
+document.getElementById('run').addEventListener('click', async () => {
+  const mode = document.getElementById('mode').value;
+  const stdinText = (document.getElementById('stdin').value || "");
+  if (mode === 'wasmer' || (mode === 'auto' && !stdinText)){
+    await runWasmer();
+  } else {
+    await runWandbox();
+  }
+});
+</script>
+</body>
+</html>
