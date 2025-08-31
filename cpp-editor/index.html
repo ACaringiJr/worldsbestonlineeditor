@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>C++ Live — Wasmer (inline runtime, no CORS) / Wandbox batch</title>
+  <title>C++ Live — Wasmer (inline, COOP/COEP SW) / Wandbox</title>
   <style>
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif;margin:0;display:flex;flex-direction:column;height:100vh}
     header{padding:10px 14px;border-bottom:1px solid #e5e7eb;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
@@ -17,6 +17,24 @@
   </style>
 </head>
 <body>
+<!-- Register COOP/COEP SW before anything else -->
+<script>
+(async function (){
+  if (!window.crossOriginIsolated && 'serviceWorker' in navigator) {
+    try {
+      await navigator.serviceWorker.register('./coi-serviceworker.js');
+      // First load will reload once to apply headers
+      if (!sessionStorage.getItem('coi')) {
+        sessionStorage.setItem('coi','1');
+        location.reload();
+      }
+    } catch (e) {
+      console.warn('COOP/COEP SW registration failed:', e);
+    }
+  }
+})();
+</script>
+
 <header>
   <h1>C++ Live — Wasmer (inline runtime) / Wandbox</h1>
   <span id="badge" class="muted">backend: auto</span>
@@ -39,7 +57,7 @@ int main(){
   std::string name;
   std::cout << "Enter your name: ";
   std::getline(std::cin, name);
-  std::cout << "Hi " << name << "!\n";
+  std::cout << "Hi " << name << "!\\n";
   return 0;
 }</textarea>
     <div class="bar"><label>Stdin (for batch):</label></div>
@@ -62,7 +80,7 @@ function setStatus(t){ statusEl.textContent = t || ""; }
 let w = null;
 function ensureWorker(){
   if (w) return w;
-  w = new Worker('worker_inline_v2.mjs', { type: 'module' });
+  w = new Worker('worker_inline_v3.mjs', { type: 'module' });
   w.onmessage = (e) => {
     const msg = e.data || {};
     if (msg.type === 'done'){
@@ -73,7 +91,10 @@ function ensureWorker(){
     } else if (msg.type === 'error'){
       setStatus("");
       tclear();
-      twrite("❌ " + msg.data + "\n");
+      twrite("❌ " + msg.data + "\\n");
+      if (String(msg.data).includes('not cross-origin isolated')) {
+        twrite("\\nFix: this page must be cross-origin isolated. On GitHub Pages, keep coi-serviceworker.js next to this HTML.\\n");
+      }
     }
   };
   return w;
@@ -115,7 +136,7 @@ async function runWandbox(){
   }
   setStatus("");
   tclear();
-  twrite("❌ All Wandbox endpoints failed.\n");
+  twrite("❌ All Wandbox endpoints failed.\\n");
 }
 
 document.getElementById('run').addEventListener('click', async () => {
